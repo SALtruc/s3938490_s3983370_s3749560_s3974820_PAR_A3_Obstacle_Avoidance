@@ -1,0 +1,224 @@
+# params.yaml - Project C refined config
+# Goal: default straight driving; observe before dodging; gentle dodge; backup/rotate only for real danger/dead-end.
+
+obstacle_perception:
+  ros__parameters:
+    scan_topic: /scan_filtered
+    depth_topic: /camera/depth/image_rect_raw
+    pointcloud_topic: /oak/points
+    tof_topic: /range
+    tof_topics: /range/fl,/range/fr,/range/rl,/range/rr
+    tof_msg_type: laser_scan
+    obstacle_topic: /obstacle_representation
+
+    use_lidar: true
+    use_depth: true
+    use_pointcloud: true
+    use_tof: true
+    publish_hz: 20.0
+
+    # LIDAR safety/perception thresholds
+    emergency_distance: 0.14
+    obstacle_distance: 0.22
+    clear_distance: 0.35
+    front_center_angle_deg: 0.0
+    front_angle_deg: 28.0
+    front_percentile: 5.0
+    robot_half_width_m: 0.13
+    front_path_half_width_m: 0.14
+    side_guard_forward_m: 0.28
+    side_guard_rear_m: 0.20
+    side_percentile: 10.0
+    front_close_min_rays: 3
+    front_close_min_ratio: 0.01
+    rear_angle_deg: 35.0
+    rear_percentile: 5.0
+    rear_path_half_width_m: 0.16
+    gap_angle_limit_deg: 100.0
+    sensor_stale_sec: 1.0
+
+    # OAK depth: secondary confirmation + dynamic object support
+    depth_obstacle_distance: 0.45
+    depth_center_fraction: 0.36
+    depth_side_fraction: 0.30
+    depth_height_fraction: 0.42
+
+    pointcloud_frame: optical
+    pointcloud_target_frame: base_link
+    pointcloud_use_tf: true
+    pointcloud_tf_timeout_sec: 0.03
+    pointcloud_qos: sensor_data
+    pointcloud_percentile: 10.0
+    pointcloud_center_half_width_m: 0.35
+    pointcloud_side_min_abs_m: 0.15
+    pointcloud_side_max_abs_m: 0.75
+    pointcloud_vertical_abs_m: 0.75
+    pointcloud_low_min_height_m: -0.90
+    pointcloud_low_max_height_m: 0.70
+    pointcloud_low_center_half_width_m: 0.32
+    pointcloud_low_min_points: 1
+    pointcloud_min_forward_m: 0.02
+    pointcloud_max_forward_m: 4.00
+    pointcloud_sample_step: 1
+    pointcloud_roi_stride_px: 6
+    pointcloud_process_hz: 8.0
+    pointcloud_unorganized_max_points: 8000
+
+    # Dynamic motion from depth image lower-centre ROI, useful for legs/feet.
+    dynamic_obstacle_distance: 0.80
+    dynamic_closing_speed: 0.80
+    dynamic_confirm_sec: 0.20
+    front_filter_alpha: 0.35
+    obstacle_hold_sec: 0.30
+    clear_confirm_sec: 0.20
+    depth_motion_enabled: true
+    depth_motion_y_center: 0.68
+    depth_motion_width_fraction: 0.45
+    depth_motion_height_fraction: 0.38
+    depth_motion_delta_m: 0.10
+    depth_motion_near_m: 1.20
+    depth_motion_min_ratio: 0.015
+    depth_motion_confirm_frames: 2
+
+obstacle_avoidance:
+  ros__parameters:
+    obstacle_topic: /obstacle_representation
+    battery_topic: /battery
+    odom_topic: /odom
+    imu_topic: /imu
+    front_tof_topics: /range/fl,/range/fr
+    cmd_vel_topic: /cmd_vel
+    cmd_vel_stamped: true
+    cmd_vel_frame_id: base_link
+    state_topic: /obstacle_avoidance_state
+    control_hz: 20.0
+
+    # Default movement
+    max_speed: 0.22
+    observe_speed: 0.00
+
+    # Gentle dodge, not strong corridor following
+    dodge_forward_speed: 0.045
+    dodge_angular_speed: 0.55
+    dodge_step_deg: 60.0
+    dodge_pivot_sec: 0.60
+
+    # Strong recovery only after too-close/dead-end
+    rotation_angular_speed: 0.60
+    rotation_step_deg: 95.0
+    rotation_commit_sec: 0.65
+    max_rotation_attempts: 3
+    backup_speed: 0.08
+    backup_sec: 1.60
+
+    # Main thresholds
+    clear_distance: 0.38       # LIDAR/depth suspicious zone (start OBSERVE)
+    stop_distance: 0.25        # static obstacle threshold -> DODGE after observation
+    hard_backup_distance: 0.10 # emergency threshold -> BACKUP; keep lower than stop_distance
+    front_tof_obstacle_distance: 0.12
+    front_tof_hard_distance: 0.12
+    dodge_clearance: 0.12      # min side clearance for dead-end/corner recovery
+    rear_stop_distance: 0.14
+    rear_hard_stop_distance: 0.05
+    rear_block_hold_sec: 0.35
+    rear_escape_side_clearance: 0.10
+    rear_escape_turn_sec: 0.45
+    rear_escape_max_attempts: 4
+    side_guard_distance: 0.045
+    side_escape_distance: 0.07
+    side_escape_angular_speed: 0.32
+    side_escape_sec: 0.45
+    edge_escape_enabled: true
+    edge_escape_front_distance: 0.25
+    edge_escape_clearance: 0.20
+    edge_escape_angular_speed: 0.45
+    edge_escape_sec: 1.00
+    edge_escape_max_attempts: 3
+    corner_backup_side_distance: 0.035
+    corner_backup_front_distance: 0.35
+    corner_backup_both_sides_distance: 0.07
+    dynamic_observe_distance: 0.80
+    observe_frames: 8          # frames to confirm obstacle before classify static/dynamic
+    clear_observe_frames: 3
+    front_release_distance: 0.40
+    front_clear_exit_frames: 5
+    clearer_side_deadband: 0.05
+    avoid_turn_direction: -1.0 # fallback when side clearances are nearly tied; -1 = right
+
+    # Static approach + dynamic timeout
+    creep_speed: 0.140         # m/s approach speed after static confirmed (to reach stop_distance then dodge)
+    dynamic_timeout_sec: 5.0   # seconds to wait for dynamic object to clear before treating as static
+    dynamic_close_distance: 0.20  # sudden dynamic appearance threshold (within 20 cm)
+    surprise_backup_enabled: true
+    surprise_backup_distance: 0.20
+    surprise_backup_sec: 0.45
+    surprise_backup_cooldown_sec: 1.20
+
+    # Keep false battery stop off during lab testing unless your battery topic is reliable.
+    require_battery_ok: false
+    min_battery_voltage: 5.0
+    warn_battery_voltage: 5.5
+    battery_stale_sec: 3.0
+
+    contact_recovery_enabled: true
+    contact_cmd_speed_min: 0.025
+    contact_odom_speed_max: 0.012
+    contact_odom_angular_max: 0.08
+    contact_stall_sec: 1.50
+    contact_recovery_cooldown_sec: 1.8
+    contact_odom_stale_sec: 0.5
+
+    tilt_recovery_enabled: true
+    tilt_backup_deg: 8.0
+    tilt_stop_deg: 18.0
+    tilt_stop_pause_sec: 0.30
+    tilt_imu_stale_sec: 0.6
+
+    debug_decisions: true
+    debug_period_sec: 0.7
+
+obstacle_trial_logger:
+  ros__parameters:
+    obstacle_topic: /obstacle_representation
+    state_topic: /obstacle_avoidance_state
+    odom_topic: /odom
+    collision_topic: /collision_event
+    summary_topic: /obstacle_trial_summary
+    log_dir: record
+    trial_label: ''
+    summary_period_sec: 5.0
+    odom_log_period_sec: 0.2
+    log_obstacle_samples: false
+    obstacle_sample_period_sec: 0.2
+    depth_topic: /camera/depth/image_rect_raw
+    pointcloud_topic: /oak/points
+    use_lidar: true
+    use_tof: true
+    use_depth: true
+    use_pointcloud: true
+    control_use_depth: true
+    control_use_pointcloud: true
+    depth_qos: auto
+    pointcloud_qos: auto
+    sensor_csv_enabled: true
+    sensor_log_period_sec: 1.0
+    sensor_stale_sec: 1.0
+    sensor_set_label: ''
+    tof_emergency_distance: 0.12
+    depth_roi_width_fraction: 0.25
+    depth_roi_height_fraction: 0.25
+    depth_sample_stride_px: 4
+    depth_process_hz: 5.0
+    depth_percentile: 10.0
+    depth_min_valid_m: 0.05
+    depth_max_valid_m: 10.0
+    pointcloud_frame: optical
+    pointcloud_max_points: 500
+    pointcloud_process_hz: 2.0
+    pointcloud_front_half_width_m: 0.35
+    pointcloud_low_center_half_width_m: 0.32
+    pointcloud_low_min_height_m: -0.90
+    pointcloud_low_max_height_m: 0.70
+    pointcloud_min_forward_m: 0.02
+    pointcloud_max_forward_m: 4.00
+    pointcloud_low_obstacle_distance_m: 0.60
