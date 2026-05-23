@@ -36,8 +36,11 @@ CAMERA_MODEL="${CAMERA_MODEL:-OAK-D-PRO}"
 DEPTHAI_PACKAGE="${DEPTHAI_PACKAGE:-depthai_ros_driver_v3}"
 DEPTHAI_LAUNCH="${DEPTHAI_LAUNCH:-driver.launch.py}"
 # depthai_ros_driver_v3 publishes under /camera/camera/... not /camera/...
+# The pointcloud lands at depth/color/points, not the legacy /oak/points name.
 DEPTH_TOPIC="${DEPTH_TOPIC:-/camera/camera/depth/image_rect_raw}"
-POINTCLOUD_TOPIC="${POINTCLOUD_TOPIC:-/oak/points}"
+POINTCLOUD_TOPIC="${POINTCLOUD_TOPIC:-/camera/camera/depth/color/points}"
+# Export so run_project_c_safety.sh inherits the correct topic names.
+export DEPTH_TOPIC POINTCLOUD_TOPIC
 
 OAK_DRIVER_PID=''
 
