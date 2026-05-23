@@ -25,10 +25,30 @@ That command restarts the ROSbot sensor snaps, builds the package, checks the
 required topics, and launches the full-fusion controller. By default the robot
 uses LIDAR, OAK depth, OAK point cloud, and ToF for obstacle perception.
 
+Before restarting snaps, the script checks the Husarion runtime. If `rosbot`,
+`husarion-rplidar`, or `husarion-depthai` is missing, it tries to install the
+missing snap. It also verifies that `snap get rosbot driver.robot-model` is
+`rosbot`, which is the ROSbot 3 / 3 PRO compatible setting for this project.
+
 If the robot snaps are already running and the package is already built, use:
 
 ```bash
 bash tools/run_project_c_safety.sh
+```
+
+Runtime guard options:
+
+```bash
+# Do not install missing snaps automatically.
+PROJECT_C_AUTO_INSTALL_SNAPS=false bash tools/run_project_c_full.sh
+
+# Use the machine's already-running native Husarion drivers instead of snaps.
+PROJECT_C_ALLOW_NATIVE_HUSARION=true \
+PROJECT_C_RESTART_SNAPS=false \
+bash tools/run_project_c_full.sh
+
+# Continue on a non-ROSbot-3 model only if its topics match this project.
+PROJECT_C_ALLOW_NON_ROSBOT3=true bash tools/run_project_c_full.sh
 ```
 
 ## First-Time Setup On The ROSbot

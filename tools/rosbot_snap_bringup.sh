@@ -8,14 +8,16 @@
 
 set -u
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WAIT_SEC="${WAIT_SEC:-12}"
 
 # ── snap helpers ───────────────────────────────────────────────────────────────
 
-if ! command -v snap >/dev/null 2>&1; then
-  echo "[error] snap is not installed on this machine."
-  exit 1
-fi
+# shellcheck source=tools/rosbot_husarion_guard.sh
+source "${ROOT}/tools/rosbot_husarion_guard.sh"
+
+PROJECT_C_ALLOW_NATIVE_HUSARION="${PROJECT_C_ALLOW_NATIVE_HUSARION:-false}" \
+  project_c_rosbot_husarion_guard || exit 1
 
 run_snap_command() {
   local action="$1" snap_name="$2"

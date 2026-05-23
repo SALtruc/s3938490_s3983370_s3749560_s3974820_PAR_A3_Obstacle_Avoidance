@@ -9,6 +9,9 @@
 #
 # Tunable env vars:
 #   PROJECT_C_RESTART_SNAPS=false   skip snap restart (if already running)
+#   PROJECT_C_AUTO_INSTALL_SNAPS=true install missing Husarion snaps
+#   PROJECT_C_ALLOW_NATIVE_HUSARION=true use already-running native drivers
+#   PROJECT_C_ALLOW_NON_ROSBOT3=true continue if rosbot model is not rosbot
 #   PROJECT_C_CHECK_ATTEMPTS=15     how many times to retry topic check
 #   PROJECT_C_CHECK_SLEEP_SEC=5     seconds between retries
 #   USE_TOF=false                   disable ToF (fallback if /range/* never appear)
@@ -21,6 +24,9 @@ CHECK_ATTEMPTS="${PROJECT_C_CHECK_ATTEMPTS:-15}"
 CHECK_SLEEP_SEC="${PROJECT_C_CHECK_SLEEP_SEC:-5}"
 
 cd "$ROOT"
+
+# shellcheck source=tools/rosbot_husarion_guard.sh
+source "${ROOT}/tools/rosbot_husarion_guard.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +50,11 @@ restart_snaps() {
     1|true|yes|on) ;;
     *) echo "[step] Snap restart skipped (PROJECT_C_RESTART_SNAPS=$RESTART_SNAPS)"; return 0 ;;
   esac
+
+  if [ "${PROJECT_C_USING_SNAPS:-false}" != "true" ]; then
+    echo "[step] Snap restart skipped (using native Husarion fallback)"
+    return 0
+  fi
 
   echo "[step] Restarting ROSbot sensor/firmware snaps..."
   sudo -v   # cache sudo credentials once
@@ -89,21 +100,30 @@ wait_for_full_fusion() {
   echo
   echo "[error] Full-fusion topics not ready after $((CHECK_ATTEMPTS * CHECK_SLEEP_SEC))s."
   echo
-  echo "[diag] Snap service status:"
-  snap services 2>/dev/null | grep -E 'rosbot|rplidar|depthai' || true
+  if [ "${PROJECT_C_USING_SNAPS:-false}" = "true" ] && command -v snap >/dev/null 2>&1; then
+    echo "[diag] Snap service status:"
+    snap services 2>/dev/null | grep -E 'rosbot|rplidar|depthai' || true
+  else
+    echo "[diag] Snap service status skipped (native Husarion fallback)"
+  fi
   echo
   echo "[diag] Current range/ToF topics:"
   ros2 topic list 2>/dev/null | sort | grep -E 'range|tof|vl53|distance' || echo "  (none)"
   echo
-  echo "[diag] Recent rosbot snap logs:"
-  sudo snap logs rosbot -n 60 | tail -30 || true
-  echo
-  echo "[hint] If /range/* never appear: run 'sudo rosbot.flash' then retry."
+  if [ "${PROJECT_C_USING_SNAPS:-false}" = "true" ] && command -v snap >/dev/null 2>&1; then
+    echo "[diag] Recent rosbot snap logs:"
+    sudo snap logs rosbot -n 60 | tail -30 || true
+    echo
+    echo "[hint] If /range/* never appear: run 'sudo rosbot.flash' then retry."
+  fi
   echo "[hint] To run without ToF:  USE_TOF=false PROJECT_C_REQUIRE_FULL_FUSION=false bash $0"
   return 1
 }
 
 # ── main ───────────────────────────────────────────────────────────────────────
+
+echo "[step] Checking Husarion ROSbot runtime..."
+project_c_rosbot_husarion_guard
 
 restart_snaps
 
