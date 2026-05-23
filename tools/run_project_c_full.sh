@@ -15,6 +15,13 @@
 #   PROJECT_C_CHECK_ATTEMPTS=15     how many times to retry topic check
 #   PROJECT_C_CHECK_SLEEP_SEC=5     seconds between retries
 #   USE_TOF=false                   disable ToF (fallback if /range/* never appear)
+#   AUTO_START_OAK=auto             auto-start native OAK driver when depthai snap is
+#                                   disabled (auto/true/false).  Set false to disable.
+#   CAMERA_MODEL=OAK-D-PRO          camera model passed to start_oak_pointcloud.sh
+#   DEPTHAI_PACKAGE=depthai_ros_driver_v3   depthai ROS package
+#   DEPTHAI_LAUNCH=driver.launch.py launch file within that package
+#   DEPTH_TOPIC=...                 depth image topic (defaults to the v3 driver topic)
+#   POINTCLOUD_TOPIC=/oak/points    pointcloud topic expected by the node
 
 set -euo pipefail
 
@@ -22,6 +29,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESTART_SNAPS="${PROJECT_C_RESTART_SNAPS:-true}"
 CHECK_ATTEMPTS="${PROJECT_C_CHECK_ATTEMPTS:-15}"
 CHECK_SLEEP_SEC="${PROJECT_C_CHECK_SLEEP_SEC:-5}"
+
+# OAK driver auto-start (used when husarion-depthai snap is disabled)
+AUTO_START_OAK="${AUTO_START_OAK:-auto}"
+CAMERA_MODEL="${CAMERA_MODEL:-OAK-D-PRO}"
+DEPTHAI_PACKAGE="${DEPTHAI_PACKAGE:-depthai_ros_driver_v3}"
+DEPTHAI_LAUNCH="${DEPTHAI_LAUNCH:-driver.launch.py}"
+# depthai_ros_driver_v3 publishes under /camera/camera/... not /camera/...
+DEPTH_TOPIC="${DEPTH_TOPIC:-/camera/camera/depth/image_rect_raw}"
+POINTCLOUD_TOPIC="${POINTCLOUD_TOPIC:-/oak/points}"
+
+OAK_DRIVER_PID=''
 
 cd "$ROOT"
 
@@ -31,6 +49,32 @@ source "${ROOT}/tools/rosbot_husarion_guard.sh"
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 snap_installed() { snap list "$1" >/dev/null 2>&1; }
+
+# True when the husarion-depthai snap exists but is disabled (not started by snap).
+oak_snap_disabled() {
+  command -v snap >/dev/null 2>&1 || return 0   # no snap → treat as absent → use native
+  snap_installed husarion-depthai || return 0    # snap absent → use native
+  local st
+  st="$(snap services husarion-depthai 2>/dev/null | awk 'NR>1{print $2}' || echo unknown)"
+  [ "$st" = "disabled" ]
+}
+
+should_auto_start_oak() {
+  case "${AUTO_START_OAK,,}" in
+    1|true|yes|on)   return 0 ;;
+    0|false|no|off)  return 1 ;;
+    *)               oak_snap_disabled ;;
+  esac
+}
+
+_cleanup_oak() {
+  if [ -n "$OAK_DRIVER_PID" ] && kill -0 "$OAK_DRIVER_PID" 2>/dev/null; then
+    echo "[oak] stopping background OAK driver (PID $OAK_DRIVER_PID)..."
+    kill "$OAK_DRIVER_PID" 2>/dev/null || true
+    wait "$OAK_DRIVER_PID" 2>/dev/null || true
+  fi
+}
+trap _cleanup_oak EXIT INT TERM
 
 restart_snap() {
   local name="$1"
@@ -67,10 +111,41 @@ restart_snaps() {
   sleep 10
 
   restart_snap husarion-rplidar
-  restart_snap husarion-depthai
+
+  # Skip restarting the depthai snap when AUTO_START_OAK will launch the native
+  # ROS driver instead (snap is disabled, or AUTO_START_OAK=true).
+  if should_auto_start_oak; then
+    echo "[oak] husarion-depthai snap is disabled — native driver will be started automatically."
+  else
+    restart_snap husarion-depthai
+  fi
 
   echo "[wait] Waiting 6 s for sensor topics to appear..."
   sleep 6
+}
+
+# ── 1b. start native OAK driver in background if needed ───────────────────────
+
+start_oak_background() {
+  should_auto_start_oak || return 0
+
+  local oak_wait=$(( CHECK_ATTEMPTS * CHECK_SLEEP_SEC + 30 ))
+  echo "[oak] Launching depthai ROS driver in background..."
+  echo "[oak] Logs → /tmp/oak_driver_bg.log"
+
+  CAMERA_MODEL="$CAMERA_MODEL" \
+  DEPTHAI_PACKAGE="$DEPTHAI_PACKAGE" \
+  DEPTHAI_LAUNCH="$DEPTHAI_LAUNCH" \
+  DEPTH_TOPIC="$DEPTH_TOPIC" \
+  POINTCLOUD_TOPIC="$POINTCLOUD_TOPIC" \
+  PROJECT_C_STOP_DEPTHAI_SNAP=true \
+  WAIT_SEC="$oak_wait" \
+    bash "${ROOT}/tools/start_oak_pointcloud.sh" \
+    >/tmp/oak_driver_bg.log 2>&1 &
+  OAK_DRIVER_PID=$!
+
+  echo "[oak] OAK driver PID=$OAK_DRIVER_PID — waiting 15 s for USB enumeration..."
+  sleep 15
 }
 
 # ── 2. wait for all topics ─────────────────────────────────────────────────────
@@ -83,6 +158,8 @@ wait_for_full_fusion() {
     check_log="$(mktemp)"
     exit_code=0
     PROJECT_C_REQUIRE_FULL_FUSION="${PROJECT_C_REQUIRE_FULL_FUSION:-true}" \
+    DEPTH_TOPIC="$DEPTH_TOPIC" \
+    POINTCLOUD_TOPIC="$POINTCLOUD_TOPIC" \
       bash tools/check_project_c_full.sh \
       2>&1 | tee "$check_log" || exit_code=$?
 
@@ -126,6 +203,7 @@ echo "[step] Checking Husarion ROSbot runtime..."
 project_c_rosbot_husarion_guard
 
 restart_snaps
+start_oak_background
 
 echo "[step] Building Project C..."
 bash tools/build_project_c.sh
